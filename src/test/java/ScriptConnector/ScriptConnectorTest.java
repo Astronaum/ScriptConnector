@@ -27,9 +27,9 @@ public class ScriptConnectorTest {
         MockitoAnnotations.openMocks(this);
 
         // Mock the configuration to provide the script path and shell type
-        Mockito.when(configuration.getScriptPath()).thenReturn("C:\\Users\\akabba-adm\\Desktop\\script.sh");
-        //Mockito.when(configuration.getShellType()).thenReturn("cmd.exe");
-        Mockito.when(configuration.getShellType()).thenReturn("C:\\Program Files\\Git\\bin\\bash.exe");
+        Mockito.when(configuration.getScriptPath()).thenReturn("C:\\Users\\akabba-adm\\Desktop\\script.ps1");
+        Mockito.when(configuration.getShellType()).thenReturn("powershell");
+        //Mockito.when(configuration.getShellType()).thenReturn("C:\\Program Files\\Git\\bin\\bash.exe");
 
 
         // Mock the connector's methods so they don't actually try to execute the script

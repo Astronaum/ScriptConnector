@@ -12,7 +12,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     @ConfigurationProperty(
             order = 1,
             displayMessageKey = "Script Path",
-            helpMessageKey = "Full path to the script to execute (e.g., /path/to/script.sh or C:\\path\\to\\script.bat)"
+            helpMessageKey = "Full path to the script to execute (e.g., /path/to/script.sh)"
     )
     public String getScriptPath() {
         return scriptPath;
@@ -25,7 +25,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     @ConfigurationProperty(
             order = 2,
             displayMessageKey = "Shell Type",
-            helpMessageKey = "Shell to execute the script (e.g., '/bin/bash' for Bash, 'cmd.exe' for Windows CMD)"
+            helpMessageKey = "Shell to execute the script (e.g., '/bin/bash' for Bash, 'cmd.exe', 'PowerShell')"
     )
     public String getShellType() {
         return shellType != null ? shellType : "/bin/bash"; // Default to /bin/bash
@@ -48,7 +48,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
         // Check shellType
         if (shellType == null || shellType.trim().isEmpty()) {
-            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash' or 'cmd.exe').");
+            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell').");
         }
         // Optional: Add more shell validation if needed
     }

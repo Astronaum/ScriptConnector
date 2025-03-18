@@ -168,7 +168,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
     }
 
-    private String executeScript(String[] command) throws IOException, InterruptedException {
+    /*private String executeScript(String[] command) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.redirectErrorStream(true);  // Merge stdout and stderr
         Process process = pb.start();
@@ -186,9 +186,53 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             throw new IOException("Script exited with code " + exitCode + ": " + output);
         }
         return output.toString().trim();
+    }*/
+
+    private String executeScript(String[] command) throws IOException, InterruptedException {
+        // Ensure the appropriate shell is used for the script type
+        if (command[0].equals("powershell") || command[0].equals("pwsh")) {
+            // PowerShell command execution
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);  // Merge stdout and stderr
+            Process process = pb.start();
+
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IOException("PowerShell script exited with code " + exitCode + ": " + output);
+            }
+            return output.toString().trim();
+        } else {
+            // Bash or other shell command execution
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);  // Merge stdout and stderr
+            Process process = pb.start();
+
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IOException("Script exited with code " + exitCode + ": " + output);
+            }
+            return output.toString().trim();
+        }
     }
 
-    private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
+
+    /*private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
         List<String> command = new ArrayList<>();
         command.add(configuration.getShellType());
         command.add(configuration.getScriptPath());
@@ -201,7 +245,30 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
         command.addAll(Arrays.asList(extraArgs));
         return command.toArray(new String[0]);
+    }*/
+
+    private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
+        List<String> command = new ArrayList<>();
+        if (configuration.getScriptPath().endsWith(".ps1")) {
+            command.add("powershell"); // or "pwsh" for PowerShell Core
+            command.add("-ExecutionPolicy");
+            command.add("Bypass"); // To allow script execution without restrictions
+            command.add("-File");
+        } else {
+            command.add(configuration.getShellType()); // For bash, use bash
+        }
+        command.add(configuration.getScriptPath());
+        command.add(operation);
+
+        for (Attribute attr : attributes) {
+            if (attr.getValue() != null && !attr.getValue().isEmpty()) {
+                command.add(attr.getName() + "=" + attr.getValue().get(0));
+            }
+        }
+        command.addAll(Arrays.asList(extraArgs));
+        return command.toArray(new String[0]);
     }
+
 
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
         for (String line : output.split("\n")) {
