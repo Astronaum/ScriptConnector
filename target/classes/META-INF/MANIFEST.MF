@@ -1,0 +1,17 @@
+Manifest-Version: 1.0
+Bnd-LastModified: 1741774065692
+Build-Jdk-Spec: 21
+Bundle-Description: Sonatype helps open source projects to set up Maven 
+ repositories on https://oss.sonatype.org/
+Bundle-License: http://opensource.org/licenses/CDDL-1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: ConnId Sample Bundle
+Bundle-SymbolicName: ScriptConnector.ScriptConnector
+Bundle-Version: 1.0
+Created-By: Apache Maven Bundle Plugin 6.0.0
+Import-Package: org.identityconnectors.framework.common.objects;version=
+ "[1.4,2)",org.identityconnectors.framework.common.objects.filter;versio
+ n="[1.4,2)",org.identityconnectors.framework.spi;version="[1.4,2)",org.
+ identityconnectors.framework.spi.operations;version="[1.4,2)"
+Require-Capability: osgi.ee;filter:="(&(osgi.ee=JavaSE)(version=21))"
+Tool: Bnd-7.0.0.202310060912
