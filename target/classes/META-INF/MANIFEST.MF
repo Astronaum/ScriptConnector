@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
-Bnd-LastModified: 1741774065692
+Bnd-LastModified: 1742394674160
 Build-Jdk-Spec: 21
 Bundle-Description: Sonatype helps open source projects to set up Maven 
  repositories on https://oss.sonatype.org/

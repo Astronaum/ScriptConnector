@@ -38,6 +38,12 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
     @Override
     public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions operationOptions) {
+
+        LOGGER.info("Creating object with attributes: ");
+        for (Attribute attribute : attributes) {
+            LOGGER.info("Attribute name: " + attribute.getName() + ", values: " + attribute.getValue());
+        }
+
         if (!objectClass.is(ObjectClass.ACCOUNT_NAME)) {
             throw new UnsupportedOperationException("Only ACCOUNT object class is supported");
         }
@@ -189,6 +195,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     }*/
 
     private String executeScript(String[] command) throws IOException, InterruptedException {
+        LOGGER.info("Executing PowerShell command: " + String.join(" ", command));
         // Ensure the appropriate shell is used for the script type
         if (command[0].equals("powershell") || command[0].equals("pwsh")) {
             // PowerShell command execution
@@ -249,6 +256,8 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
     private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
         List<String> command = new ArrayList<>();
+
+        // Check if the script is a PowerShell script (.ps1 extension)
         if (configuration.getScriptPath().endsWith(".ps1")) {
             command.add("powershell"); // or "pwsh" for PowerShell Core
             command.add("-ExecutionPolicy");
@@ -257,17 +266,33 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         } else {
             command.add(configuration.getShellType()); // For bash, use bash
         }
+
+        // Add the script path and operation to the command
         command.add(configuration.getScriptPath());
         command.add(operation);
 
+        // Add attributes as parameters
         for (Attribute attr : attributes) {
             if (attr.getValue() != null && !attr.getValue().isEmpty()) {
-                command.add(attr.getName() + "=" + attr.getValue().get(0));
+                // Convert __NAME__ to name
+                String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
+
+                for (Object value : attr.getValue()) {
+                    command.add("-" + attributeName);  // PowerShell-style parameter (e.g., -name)
+                    command.add(String.valueOf(value)); // Convert the value to String
+                }
             }
         }
-        command.addAll(Arrays.asList(extraArgs));
+
+        // Add extra arguments (if any)
+        if (extraArgs != null) {
+            command.addAll(Arrays.asList(extraArgs));
+        }
+
+        // Return the command as an array of strings
         return command.toArray(new String[0]);
     }
+
 
 
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
