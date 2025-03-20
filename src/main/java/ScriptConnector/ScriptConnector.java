@@ -57,6 +57,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             if (uidValue == null) {
                 throw new RuntimeException("Script did not return a valid UID");
             }
+            LOGGER.info("Extracted UID: " + uidValue);
             return new Uid(uidValue);
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Failed to execute create script: " + e.getMessage(), e);
@@ -70,7 +71,8 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
 
         try {
-            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", "uid=" + uid.getUidValue()};
+            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", uid.getUidValue()}; //trying fixing the delete
+            LOGGER.info("Executing delete command: " + Arrays.toString(command));
             String output = executeScript(command);
             LOGGER.info("Delete operation output: " + output);
         } catch (IOException | InterruptedException e) {
@@ -85,7 +87,8 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
 
         try {
-            String[] command = buildCommand("update", attributes, "uid=" + uid.getUidValue());
+            String[] command = buildCommand("update", attributes, uid.getUidValue());
+            LOGGER.info("Executing update command: " + Arrays.toString(command));
             String output = executeScript(command);
             LOGGER.info("Update operation output: " + output);
             return uid;
@@ -296,17 +299,40 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
 
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
-        for (String line : output.split("\n")) {
+        LOGGER.info("Script output received in extractUIDFromOutput: " + output);
+
+        /*for (String line : output.split("\n")) {
             if (line.startsWith("UID=")) {
                 return line.substring(4);
             }
+        }*/
+
+        for (String line : output.split("\n")) {
+            LOGGER.info("Processing line: " + line);  // Log each line being processed
+            if (line.startsWith("UID=")) {
+                String extractedUid = line.substring(4);
+                LOGGER.info("Extracted UID from script output: " + extractedUid);  // Log the UID extracted from the line
+                return extractedUid;
+            }
         }
 
-        for (Attribute attr : attributes) {
+        /*for (Attribute attr : attributes) {
             if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
                 return attr.getValue().get(0).toString();
             }
+        }*/
+
+        for (Attribute attr : attributes) {
+            LOGGER.info("Checking attribute: " + attr.getName());
+            if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
+                String fallbackUid = attr.getValue().get(0).toString();
+                LOGGER.info("Fallback UID from Name attribute: " + fallbackUid);
+                return fallbackUid;
+            }
         }
+
+        LOGGER.warning("No UID found in output or attributes.");
         return null;
+
     }
 }
