@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @ConnectorClass(configurationClass = ScriptConfiguration.class, displayNameKey = "script.connector.display")
 public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object> {
@@ -297,7 +299,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     }
 
 
-
+    /*
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
         LOGGER.info("Script output received in extractUIDFromOutput: " + output);
 
@@ -305,7 +307,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             if (line.startsWith("UID=")) {
                 return line.substring(4);
             }
-        }*/
+        }
 
         for (String line : output.split("\n")) {
             LOGGER.info("Processing line: " + line);  // Log each line being processed
@@ -320,7 +322,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
                 return attr.getValue().get(0).toString();
             }
-        }*/
+        }
 
         for (Attribute attr : attributes) {
             LOGGER.info("Checking attribute: " + attr.getName());
@@ -334,5 +336,33 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         LOGGER.warning("No UID found in output or attributes.");
         return null;
 
+    }*/
+
+    private String extractUidFromOutput(String output, Set<Attribute> attributes) {
+        LOGGER.info("Script output received in extractUIDFromOutput: " + output);
+
+        // Use regex to extract UID
+        Pattern pattern = Pattern.compile("UID=([a-zA-Z0-9\\-]+)");
+        Matcher matcher = pattern.matcher(output);
+        if (matcher.find()) {
+            String extractedUid = matcher.group(1);
+            LOGGER.info("Extracted UID from script output: " + extractedUid);
+            return extractedUid;
+        }
+
+        // If UID not found in output, fallback to __NAME__
+        for (Attribute attr : attributes) {
+            LOGGER.info("Checking attribute: " + attr.getName());
+            if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
+                String fallbackUid = attr.getValue().get(0).toString();
+                LOGGER.info("Fallback UID from Name attribute: " + fallbackUid);
+                return fallbackUid;
+            }
+        }
+
+        LOGGER.warning("No UID found in output or attributes.");
+        return null;
     }
+
+
 }
