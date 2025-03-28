@@ -7,13 +7,19 @@ import org.identityconnectors.framework.spi.Configuration;
 import org.identityconnectors.framework.spi.Connector;
 import org.identityconnectors.framework.spi.ConnectorClass;
 import org.identityconnectors.framework.spi.operations.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Set;
 
 @ConnectorClass(configurationClass = ScriptConfiguration.class, displayNameKey = "script.connector.display")
 public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object> {
@@ -30,6 +36,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     public void init(Configuration configuration) {
         this.configuration = (ScriptConfiguration) configuration;
         LOGGER.info("ScriptConnector initialized with script path: " + this.configuration.getScriptPath());
+        LOGGER.info("ScriptConnector initialized with schema path: " + this.configuration.getSchemaFilePath());
     }
 
     @Override
@@ -106,10 +113,46 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         ObjectClassInfoBuilder accountBuilder = new ObjectClassInfoBuilder();
         accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
         accountBuilder.addAttributeInfo(Name.INFO);
-        accountBuilder.addAttributeInfo(AttributeInfoBuilder.define("email")
-                .setType(String.class)
-                .setRequired(false)
-                .build());
+
+        String schemaFilePath = configuration.getSchemaFilePath();
+
+        if (schemaFilePath != null && !schemaFilePath.trim().isEmpty()) {
+            try {
+                // Load JSON schema file
+                String content = new String(Files.readAllBytes(Paths.get(schemaFilePath)));
+                JSONObject json = new JSONObject(content);
+                JSONArray attrs = json.getJSONArray("attributes");
+
+                // Parse attributes dynamically
+                for (int i = 0; i < attrs.length(); i++) {
+                    JSONObject attr = attrs.getJSONObject(i);
+                    String name = attr.getString("name");
+                    Class<?> type = String.class;
+
+                    if ("Integer".equalsIgnoreCase(attr.getString("type"))) {
+                        type = Integer.class;
+                    } else if ("Boolean".equalsIgnoreCase(attr.getString("type"))) {
+                        type = Boolean.class;
+                    }
+
+                    boolean required = attr.optBoolean("required", false);
+
+                    AttributeInfoBuilder attrBuilder = AttributeInfoBuilder.define(name).setType(type);
+                    if (required) {
+                        attrBuilder.setRequired(true);
+                    }
+                    accountBuilder.addAttributeInfo(attrBuilder.build());
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to load schema from file: " + schemaFilePath, e);
+            }
+        } else {
+            // Default attributes if schema file is not provided
+            accountBuilder.addAttributeInfo(AttributeInfoBuilder.define("email")
+                    .setType(String.class)
+                    .setRequired(false)
+                    .build());
+        }
 
         schemaBuilder.defineObjectClass(accountBuilder.build());
         return schemaBuilder.build();
@@ -278,6 +321,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
         // Add attributes as parameters
         for (Attribute attr : attributes) {
+
             if (attr.getValue() != null && !attr.getValue().isEmpty()) {
                 // Convert __NAME__ to name
                 String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
