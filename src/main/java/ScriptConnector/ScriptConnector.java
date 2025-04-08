@@ -106,7 +106,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
     }
 
-    @Override
+    /*@Override
     public Schema schema() {
         SchemaBuilder schemaBuilder = new SchemaBuilder(ScriptConnector.class);
 
@@ -156,7 +156,63 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
         schemaBuilder.defineObjectClass(accountBuilder.build());
         return schemaBuilder.build();
+    }*/
+
+    @Override
+    public Schema schema() {
+        LOGGER.info("Building schema from dynamic script...");
+        SchemaBuilder schemaBuilder = new SchemaBuilder(getClass());
+        ObjectClassInfoBuilder accountBuilder = new ObjectClassInfoBuilder();
+        accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
+
+        // Prepare command
+        String[] command = new String[]{
+                "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getSchemaFilePath()
+        };
+
+        String output;
+        try {
+            output = executeScript(command);
+        } catch (Exception e) {
+            throw new RuntimeException("Error executing schema script: " + e.getMessage(), e);
+        }
+
+        String[] lines = output.split("\\R"); // Split by newlines (cross-platform)
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+
+            // Expecting format: name:type:requiredOrOptional
+            String[] parts = line.split(":");
+            if (parts.length < 3) {
+                LOGGER.warning("Invalid schema line: " + line);
+                continue;
+            }
+
+            String name = parts[0].trim();
+            String typeStr = parts[1].trim();
+            String requiredStr = parts[2].trim();
+
+            Class<?> type = String.class;
+            if ("Integer".equalsIgnoreCase(typeStr)) {
+                type = Integer.class;
+            } else if ("Boolean".equalsIgnoreCase(typeStr)) {
+                type = Boolean.class;
+            }
+
+            boolean required = "required".equalsIgnoreCase(requiredStr);
+
+            AttributeInfoBuilder attrBuilder = AttributeInfoBuilder.define(name).setType(type);
+            if (required) {
+                attrBuilder.setRequired(true);
+            }
+
+            accountBuilder.addAttributeInfo(attrBuilder.build());
+        }
+
+        schemaBuilder.defineObjectClass(accountBuilder.build());
+        return schemaBuilder.build();
     }
+
 
     @Override
     public FilterTranslator<Object> createFilterTranslator(ObjectClass objectClass, OperationOptions operationOptions) {

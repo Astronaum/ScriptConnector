@@ -39,7 +39,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     @ConfigurationProperty(
             order = 3,
             displayMessageKey = "Schema Path",
-            helpMessageKey = "Full path to the json schema"
+            helpMessageKey = "Full path to the schema (e.g., /path/to/schema.ps1)"
     )
     public String getSchemaFilePath() {
         return schemaFilePath;
@@ -73,5 +73,6 @@ public class ScriptConfiguration extends AbstractConfiguration {
         if (shellType == null || shellType.trim().isEmpty()) {
             throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell').");
         }
+
     }
 }
