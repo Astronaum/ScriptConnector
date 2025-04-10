@@ -80,7 +80,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
 
         try {
-            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", uid.getUidValue()}; //trying fixing the delete
+            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", uid.getUidValue()};
             LOGGER.info("Executing delete command: " + Arrays.toString(command));
             String output = executeScript(command);
             LOGGER.info("Delete operation output: " + output);
@@ -298,7 +298,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         return output.toString().trim();
     }*/
 
-    private String executeScript(String[] command) throws IOException, InterruptedException {
+    /*private String executeScript(String[] command) throws IOException, InterruptedException {
         LOGGER.info("Executing PowerShell command: " + String.join(" ", command));
         // Ensure the appropriate shell is used for the script type
         if (command[0].equals("powershell") || command[0].equals("pwsh")) {
@@ -340,6 +340,29 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             }
             return output.toString().trim();
         }
+    }*/
+
+    private String executeScript(String[] command) throws IOException, InterruptedException {
+        LOGGER.info("Executing script command: " + String.join(" ", command));
+
+        // Ensure the appropriate shell is used for the script type
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);  // Merge stdout and stderr
+        Process process = pb.start();
+
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("Script exited with code " + exitCode + ": " + output);
+        }
+        return output.toString().trim();
     }
 
 
@@ -367,6 +390,9 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             command.add("-ExecutionPolicy");
             command.add("Bypass"); // To allow script execution without restrictions
             command.add("-File");
+        } else if (configuration.getScriptPath().endsWith(".pl")) {
+            // Perl script
+            command.add("perl");
         } else {
             command.add(configuration.getShellType()); // For bash, use bash
         }
@@ -376,7 +402,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         command.add(operation);
 
         // Add attributes as parameters
-        for (Attribute attr : attributes) {
+        /*for (Attribute attr : attributes) {
 
             if (attr.getValue() != null && !attr.getValue().isEmpty()) {
                 // Convert __NAME__ to name
@@ -385,6 +411,26 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
                 for (Object value : attr.getValue()) {
                     command.add("-" + attributeName);  // PowerShell-style parameter (e.g., -name)
                     command.add(String.valueOf(value)); // Convert the value to String
+                }
+            }
+        }*/
+
+        for (Attribute attr : attributes) {
+            if (attr.getValue() != null && !attr.getValue().isEmpty()) {
+                // Convert __NAME__ to name
+                String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
+
+                for (Object value : attr.getValue()) {
+                    command.add("-" + attributeName);  // e.g., -name
+
+                    String stringValue = String.valueOf(value);
+
+                    // If the value contains a space, quote it
+                    if (stringValue.contains(" ")) {
+                        stringValue = "\"" + stringValue + "\"";
+                    }
+
+                    command.add(stringValue);
                 }
             }
         }

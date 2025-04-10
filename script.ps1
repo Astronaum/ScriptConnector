@@ -2,6 +2,7 @@ param (
     [string]$operation,
     [string]$uid,
     [string]$name,
+    [string]$username,
     [string]$email
 )
 
@@ -32,13 +33,13 @@ switch ($operation) {
         Log "Received parameters: Name=$name, Email=$email"
 
         # Utiliser name comme UID
-        if (-not $name -or -not $email) {
+        if (-not $username -or -not $email) {
             Log "Erreur: name et email sont requis."
             exit 1
         }
 
         # Générer un UID unique
-		$uid = [guid]::NewGuid().ToString()
+        $uid = [guid]::NewGuid().ToString()
 
         # Vérifier si l'utilisateur existe déjà
         if (Select-String -Path $usersFile -Pattern "UID=$uid") {
@@ -47,9 +48,9 @@ switch ($operation) {
         }
 
         # Ajouter l'utilisateur au fichier
-        $userEntry = "UID=$uid, Name=$name, Email=$email"
+        $userEntry = "UID=$uid, Name=$name, Username=$username, Email=$email"
         Add-Content -Path $usersFile -Value $userEntry
-        Log "Utilisateur ajouté: UID=$uid, Name=$name, Email=$email"
+        Log "Utilisateur ajouté: UID=$uid, Name=$name, Username=$username, Email=$email"
     }
 
     "search" {
@@ -79,89 +80,91 @@ switch ($operation) {
         }
     }
 
-	"delete" {
-		Log "Delete operation called with UID=$uid"
+    "delete" {
+        Log "Delete operation called with UID=$uid"
 
-		if (-not $uid) {
-			Log "Erreur: UID est requis."
-			exit 1
-		}
+        if (-not $uid) {
+            Log "Erreur: UID est requis."
+            exit 1
+        }
 
-		# Read the file content into an array
-		$fileContent = Get-Content $usersFile
+        # Read the file content into an array
+        $fileContent = Get-Content $usersFile
 
-		# Check if the user entry with UID exists
-		$userEntry = $fileContent | Where-Object { $_ -match "UID=$uid" }
+        # Check if the user entry with UID exists
+        $userEntry = $fileContent | Where-Object { $_ -match "UID=$uid" }
 
-		if ($userEntry) {
-			# Remove the matching line
-			$fileContent = $fileContent | Where-Object { $_ -notmatch "UID=$uid" }
+        if ($userEntry) {
+            # Remove the matching line
+            $fileContent = $fileContent | Where-Object { $_ -notmatch "UID=$uid" }
 
-			# Write the updated content back to the file
-			Set-Content -Path $usersFile -Value $fileContent
+            # Write the updated content back to the file
+            Set-Content -Path $usersFile -Value $fileContent
 
-			Log "Utilisateur supprimé: UID=$uid"
-		} else {
-			Log "Erreur: Aucun utilisateur trouvé avec UID=$uid"
-			exit 1
-		}
-	}
+            Log "Utilisateur supprimé: UID=$uid"
+        } else {
+            Log "Erreur: Aucun utilisateur trouvé avec UID=$uid"
+            exit 1
+        }
+    }
 
     "update" {
-		Log "Received update parameters - Name: $name, Email: $email, UID: $uid"
+        Log "Received update parameters - Name: $name, Username=$username, Email: $email, UID: $uid"
 
-		if (-not $uid) {
-			Log "Erreur: UID requis pour mettre à jour un utilisateur."
-			exit 1
-		}
+        if (-not $uid) {
+            Log "Erreur: UID requis pour mettre à jour un utilisateur."
+            exit 1
+        }
 
-		# Vérifier si l'utilisateur existe
-		$userExists = Select-String -Path $usersFile -Pattern "UID=$uid"
+        # Vérifier si l'utilisateur existe
+        $userExists = Select-String -Path $usersFile -Pattern "UID=$uid"
 
-		if (-not $userExists) {
-			Log "Erreur: Aucun utilisateur trouvé avec UID=$uid. Impossible de mettre à jour."
-			exit 1
-		}
+        if (-not $userExists) {
+            Log "Erreur: Aucun utilisateur trouvé avec UID=$uid. Impossible de mettre à jour."
+            exit 1
+        }
 
-		# Read the file content
-		$lines = Get-Content -Path $usersFile
-		$updated = $false
-		$newLines = @()  # Array to hold the updated lines
+        # Read the file content
+        $lines = Get-Content -Path $usersFile
+        $updated = $false
+        $newLines = @()  # Array to hold the updated lines
 
-		# Process the lines to find the matching UID and modify the corresponding entry
-		foreach ($line in $lines) {
-			if ($line -match "UID=$uid") {
-				# Extract the existing user details to ensure we keep all the other information intact
-				$existingName = ($line -split ", ")[1].Split("=")[1]
-				$existingEmail = ($line -split ", ")[2].Split("=")[1]
+        # Process the lines to find the matching UID and modify the corresponding entry
+        foreach ($line in $lines) {
+            if ($line -match "UID=$uid") {
+                # Extract the existing user details to ensure we keep all the other information intact
+                $existingName = ($line -split ", ")[1].Split("=")[1]
+                $existingUsrName = ($line -split ", ")[1].Split("=")[1]
+                $existingEmail = ($line -split ", ")[2].Split("=")[1]
 
-				# Keep the existing name unless a new name is provided
-				$newName = if ($name) { $name } else { $existingName }
-				$newEmail = if ($email) { $email } else { $existingEmail }
+                # Keep the existing name unless a new name is provided
+                $newName = if ($name) { $name } else { $existingName }
+                $newUrName = if ($username) { $username } else { $existingUsrName }
+                $newEmail = if ($email) { $email } else { $existingEmail }
 
-				# Prepare the new entry with the updated (or unchanged) details
-				$newEntry = "UID=$uid, Name=$newName, Email=$newEmail"
+                # Prepare the new entry with the updated (or unchanged) details
+                $newEntry = "UID=$uid, Name=$newName, Username=$username, Email=$newEmail"
 
-				# Log the update
-				Log "Utilisateur mis à jour: $newEntry"
-				$updated = $true
+                # Log the update
+                Log "Utilisateur mis à jour: $newEntry"
+                $updated = $true
 
-				# Add the updated entry to the new lines array
-				$newLines += $newEntry
-			} else {
-				# If no match, keep the line unchanged
-				$newLines += $line
-			}
-		}
+                # Add the updated entry to the new lines array
+                $newLines += $newEntry
+            } else {
+                # If no match, keep the line unchanged
+                $newLines += $line
+            }
+        }
 
-		# After processing all lines, write back the updated content if any update was made
-		if ($updated) {
-			Set-Content -Path $usersFile -Value $newLines
-			Log "Fichier mis à jour avec succès."
-		} else {
-			Log "Aucune mise à jour effectuée, aucun utilisateur trouvé avec UID=$uid."
-		}
-	}
+        # After processing all lines, write back the updated content if any update was made
+        if ($updated) {
+            Set-Content -Path $usersFile -Value $newLines
+            Log "Fichier mis à jour avec succès."
+        } else {
+            Log "Aucune mise à jour effectuée, aucun utilisateur trouvé avec UID=$uid."
+        }
+    }
 
 
 
