@@ -8,6 +8,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
     private String scriptPath;
     private String shellType;
+    private String scriptHash;
     private String schemaFilePath;
 
     @ConfigurationProperty(
@@ -21,6 +22,19 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
     public void setScriptPath(String scriptPath) {
         this.scriptPath = scriptPath;
+    }
+
+    @ConfigurationProperty(
+            order = 2,
+            displayMessageKey = "Script Hash",
+            helpMessageKey = "Hash SHA-256 of the script"
+    )
+    public String getScriptHash() {
+        return scriptHash;
+    }
+
+    public void setScriptHash(String scriptHash) {
+        this.scriptHash = scriptHash;
     }
 
     @ConfigurationProperty(
@@ -71,7 +85,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
         // Check shellType
         if (shellType == null || shellType.trim().isEmpty()) {
-            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell').");
+            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell', 'perl').");
         }
 
     }
