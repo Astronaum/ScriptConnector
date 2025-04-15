@@ -7,13 +7,23 @@ import org.identityconnectors.framework.spi.Configuration;
 import org.identityconnectors.framework.spi.Connector;
 import org.identityconnectors.framework.spi.ConnectorClass;
 import org.identityconnectors.framework.spi.operations.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Set;
+
+import static org.identityconnectors.framework.common.objects.AttributeBuilder.build;
 
 @ConnectorClass(configurationClass = ScriptConfiguration.class, displayNameKey = "script.connector.display")
 public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object> {
@@ -30,6 +40,12 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     public void init(Configuration configuration) {
         this.configuration = (ScriptConfiguration) configuration;
         LOGGER.info("ScriptConnector initialized with script path: " + this.configuration.getScriptPath());
+        LOGGER.info("ScriptConnector initialized with schema path: " + this.configuration.getSchemaFilePath());
+        LOGGER.info("ScriptConnector initialized with Script Hash : " + this.configuration.getScriptHash());
+
+        if (!verifyScriptHash()) {
+            throw new SecurityException("Script hash verification failed. Script may have been modified.");
+        }
     }
 
     @Override
@@ -73,14 +89,34 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
 
         try {
-            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", uid.getUidValue()}; //trying fixing the delete
-            LOGGER.info("Executing delete command: " + Arrays.toString(command));
+            // Création dynamique de l'attribut "uid"
+            Set<Attribute> attributes = new HashSet<>();
+            attributes.add(build("uid", uid.getUidValue()));
+
+            String[] command = buildCommand("delete", attributes);
+            LOGGER.info("Executing delete command: " + String.join(" ", command));
             String output = executeScript(command);
             LOGGER.info("Delete operation output: " + output);
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Failed to execute delete script: " + e.getMessage(), e);
         }
     }
+
+    /*@Override
+    public void delete(ObjectClass objectClass, Uid uid, OperationOptions operationOptions) {
+        if (!objectClass.is(ObjectClass.ACCOUNT_NAME)) {
+            throw new UnsupportedOperationException("Only ACCOUNT object class is supported");
+        }
+
+        try {
+            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", "uid=" + uid.getUidValue()};
+            LOGGER.info("Executing delete command: " + Arrays.toString(command));
+            String output = executeScript(command);
+            LOGGER.info("Delete operation output: " + output);
+        } catch (IOException | InterruptedException e) {
+            throw new RuntimeException("Failed to execute delete script: " + e.getMessage(), e);
+        }
+    }*/
 
     @Override
     public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
@@ -89,7 +125,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
 
         try {
-            String[] command = buildCommand("update", attributes, uid.getUidValue());
+            String[] command = buildCommand("update", attributes,"uid=" + uid.getUidValue());
             LOGGER.info("Executing update command: " + Arrays.toString(command));
             String output = executeScript(command);
             LOGGER.info("Update operation output: " + output);
@@ -101,19 +137,59 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
     @Override
     public Schema schema() {
-        SchemaBuilder schemaBuilder = new SchemaBuilder(ScriptConnector.class);
-
+        LOGGER.info("Building schema from dynamic script...");
+        SchemaBuilder schemaBuilder = new SchemaBuilder(getClass());
         ObjectClassInfoBuilder accountBuilder = new ObjectClassInfoBuilder();
         accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
-        accountBuilder.addAttributeInfo(Name.INFO);
-        accountBuilder.addAttributeInfo(AttributeInfoBuilder.define("email")
-                .setType(String.class)
-                .setRequired(false)
-                .build());
+
+        // Prepare command
+        String[] command = new String[]{
+                "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getSchemaFilePath()
+        };
+
+        String output;
+        try {
+            output = executeScript(command);
+        } catch (Exception e) {
+            throw new RuntimeException("Error executing schema script: " + e.getMessage(), e);
+        }
+
+        String[] lines = output.split("\\R"); // Split by newlines (cross-platform)
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+
+            // Expecting format: name:type:requiredOrOptional
+            String[] parts = line.split(":");
+            if (parts.length < 3) {
+                LOGGER.warning("Invalid schema line: " + line);
+                continue;
+            }
+
+            String name = parts[0].trim();
+            String typeStr = parts[1].trim();
+            String requiredStr = parts[2].trim();
+
+            Class<?> type = String.class;
+            if ("Integer".equalsIgnoreCase(typeStr)) {
+                type = Integer.class;
+            } else if ("Boolean".equalsIgnoreCase(typeStr)) {
+                type = Boolean.class;
+            }
+
+            boolean required = "required".equalsIgnoreCase(requiredStr);
+
+            AttributeInfoBuilder attrBuilder = AttributeInfoBuilder.define(name).setType(type);
+            if (required) {
+                attrBuilder.setRequired(true);
+            }
+
+            accountBuilder.addAttributeInfo(attrBuilder.build());
+        }
 
         schemaBuilder.defineObjectClass(accountBuilder.build());
         return schemaBuilder.build();
     }
+
 
     @Override
     public FilterTranslator<Object> createFilterTranslator(ObjectClass objectClass, OperationOptions operationOptions) {
@@ -179,7 +255,10 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
     }
 
-    /*private String executeScript(String[] command) throws IOException, InterruptedException {
+    private String executeScript(String[] command) throws IOException, InterruptedException {
+        LOGGER.info("Executing script command: " + String.join(" ", command));
+
+        // Ensure the appropriate shell is used for the script type
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.redirectErrorStream(true);  // Merge stdout and stderr
         Process process = pb.start();
@@ -197,69 +276,83 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             throw new IOException("Script exited with code " + exitCode + ": " + output);
         }
         return output.toString().trim();
-    }*/
+    }
 
-    private String executeScript(String[] command) throws IOException, InterruptedException {
-        LOGGER.info("Executing PowerShell command: " + String.join(" ", command));
-        // Ensure the appropriate shell is used for the script type
-        if (command[0].equals("powershell") || command[0].equals("pwsh")) {
-            // PowerShell command execution
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);  // Merge stdout and stderr
-            Process process = pb.start();
+    private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
+        List<String> command = new ArrayList<>();
 
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
-                }
-            }
+        boolean isPowerShell = configuration.getScriptPath().endsWith(".ps1");
+        boolean isPerl = configuration.getScriptPath().endsWith(".pl");
+        boolean isPython = configuration.getScriptPath().endsWith(".py");
+        boolean isBash = configuration.getShellType().contains("bash");
 
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new IOException("PowerShell script exited with code " + exitCode + ": " + output);
-            }
-            return output.toString().trim();
+        if (isPowerShell) {
+            command.add("powershell");
+            command.add("-ExecutionPolicy");
+            command.add("Bypass");
+            command.add("-File");
+        } else if (isPerl) {
+            command.add("perl");
+        } else if (isPython) {
+            command.add("python");
         } else {
-            // Bash or other shell command execution
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);  // Merge stdout and stderr
-            Process process = pb.start();
+            command.add(configuration.getShellType());
+        }
 
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
+        command.add(configuration.getScriptPath());
+        command.add(operation);
+
+        // Si c'est Perl (ou Bash) ET que c'est une opération DELETE, on passe les arguments en positionnels
+        if ((isPerl || isBash) && "delete".equalsIgnoreCase(operation)) {
+            for (Attribute attr : attributes) {
+                if (attr.getValue() != null && !attr.getValue().isEmpty()) {
+                    for (Object value : attr.getValue()) {
+                        command.add(String.valueOf(value));
+                    }
                 }
             }
+        } else {
+            // Sinon on utilise les préfixes classiques
+            String prefix = isPython ? "--" : "-";
 
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new IOException("Script exited with code " + exitCode + ": " + output);
+            for (Attribute attr : attributes) {
+                if (attr.getValue() != null && !attr.getValue().isEmpty()) {
+                    String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
+
+                    for (Object value : attr.getValue()) {
+                        command.add(prefix + attributeName);
+                        String stringValue = String.valueOf(value);
+                        if (stringValue.contains(" ")) {
+                            stringValue = "\"" + stringValue + "\"";
+                        }
+                        command.add(stringValue);
+                    }
+                }
             }
-            return output.toString().trim();
         }
+
+        // Extra args
+        if (extraArgs != null) {
+            for (String arg : extraArgs) {
+                if (arg.contains("=")) {
+                    String[] parts = arg.split("=", 2);
+                    String key = parts[0];
+                    String value = parts[1];
+
+                    String prefix = isPython ? "--" : "-";
+                    command.add(prefix + key);
+                    command.add(value);
+                } else {
+                    command.add(arg);
+                }
+            }
+        }
+
+        return command.toArray(new String[0]);
     }
 
 
     /*private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
-        List<String> command = new ArrayList<>();
-        command.add(configuration.getShellType());
-        command.add(configuration.getScriptPath());
-        command.add(operation);
-
-        for (Attribute attr : attributes) {
-            if (attr.getValue() != null && !attr.getValue().isEmpty()) {
-                command.add(attr.getName() + "=" + attr.getValue().get(0));
-            }
-        }
-        command.addAll(Arrays.asList(extraArgs));
-        return command.toArray(new String[0]);
-    }*/
-
-    private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
         List<String> command = new ArrayList<>();
 
         // Check if the script is a PowerShell script (.ps1 extension)
@@ -268,6 +361,12 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             command.add("-ExecutionPolicy");
             command.add("Bypass"); // To allow script execution without restrictions
             command.add("-File");
+        } else if (configuration.getScriptPath().endsWith(".pl")) {
+            // Perl script
+            command.add("perl");
+        } else if (configuration.getScriptPath().endsWith(".py")) {
+            command.add("python"); // ou "python" selon l'environnement
+            LOGGER.info("Final command to execute: " + String.join(" ", command));
         } else {
             command.add(configuration.getShellType()); // For bash, use bash
         }
@@ -275,16 +374,27 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         // Add the script path and operation to the command
         command.add(configuration.getScriptPath());
         command.add(operation);
+        boolean isPython = configuration.getScriptPath().endsWith(".py");
 
-        // Add attributes as parameters
         for (Attribute attr : attributes) {
             if (attr.getValue() != null && !attr.getValue().isEmpty()) {
                 // Convert __NAME__ to name
                 String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
 
+                // Use -- for Python, - otherwise
+                String prefix = isPython ? "--" : "-";
+
                 for (Object value : attr.getValue()) {
-                    command.add("-" + attributeName);  // PowerShell-style parameter (e.g., -name)
-                    command.add(String.valueOf(value)); // Convert the value to String
+                    command.add(prefix + attributeName);  // e.g., -name
+
+                    String stringValue = String.valueOf(value);
+
+                    // If the value contains a space, quote it
+                    if (stringValue.contains(" ")) {
+                        stringValue = "\"" + stringValue + "\"";
+                    }
+
+                    command.add(stringValue);
                 }
             }
         }
@@ -294,48 +404,27 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             command.addAll(Arrays.asList(extraArgs));
         }
 
+        if (extraArgs != null) {
+            for (String arg : extraArgs) {
+                if (arg.contains("=")) {
+                    String[] parts = arg.split("=", 2);
+                    String key = parts[0];
+                    String value = parts[1];
+
+                    String prefix = isPython ? "--" : "-";
+                    command.add(prefix + key);
+                    command.add(value);
+                } else {
+                    // fallback: no key=value form, just raw arg
+                    command.add(arg);
+                }
+            }
+        }
+
+        LOGGER.info("Executing script command: " + String.join(" ", command));
+
         // Return the command as an array of strings
         return command.toArray(new String[0]);
-    }
-
-
-    /*
-    private String extractUidFromOutput(String output, Set<Attribute> attributes) {
-        LOGGER.info("Script output received in extractUIDFromOutput: " + output);
-
-        /*for (String line : output.split("\n")) {
-            if (line.startsWith("UID=")) {
-                return line.substring(4);
-            }
-        }
-
-        for (String line : output.split("\n")) {
-            LOGGER.info("Processing line: " + line);  // Log each line being processed
-            if (line.startsWith("UID=")) {
-                String extractedUid = line.substring(4);
-                LOGGER.info("Extracted UID from script output: " + extractedUid);  // Log the UID extracted from the line
-                return extractedUid;
-            }
-        }
-
-        /*for (Attribute attr : attributes) {
-            if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
-                return attr.getValue().get(0).toString();
-            }
-        }
-
-        for (Attribute attr : attributes) {
-            LOGGER.info("Checking attribute: " + attr.getName());
-            if (attr.is(Name.NAME) && attr.getValue() != null && !attr.getValue().isEmpty()) {
-                String fallbackUid = attr.getValue().get(0).toString();
-                LOGGER.info("Fallback UID from Name attribute: " + fallbackUid);
-                return fallbackUid;
-            }
-        }
-
-        LOGGER.warning("No UID found in output or attributes.");
-        return null;
-
     }*/
 
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
@@ -364,5 +453,27 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         return null;
     }
 
+    private boolean verifyScriptHash() {
+        String scriptPath = configuration.getScriptPath();
+        String expectedHash = configuration.getScriptHash(); // SHA-256 attendu
+        try {
+            byte[] scriptBytes = Files.readAllBytes(Paths.get(scriptPath));
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(scriptBytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            String actualHash = sb.toString();
+
+            LOGGER.info("Expected Script Hash: " + expectedHash);
+            LOGGER.info("Actual Script Hash:   " + actualHash);
+
+            return actualHash.equalsIgnoreCase(expectedHash);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            LOGGER.severe("Error computing script hash: " + e.getMessage());
+            return false;
+        }
+    }
 
 }

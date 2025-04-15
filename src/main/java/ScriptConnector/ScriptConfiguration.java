@@ -8,11 +8,13 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
     private String scriptPath;
     private String shellType;
+    private String scriptHash;
+    private String schemaFilePath;
 
     @ConfigurationProperty(
             order = 1,
             displayMessageKey = "Script Path",
-            helpMessageKey = "Full path to the script to execute (e.g., /path/to/script.sh)"
+            helpMessageKey = "Full path to the script to execute (e.g., /path/to/script.ps1)"
     )
     public String getScriptPath() {
         return scriptPath;
@@ -20,6 +22,19 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
     public void setScriptPath(String scriptPath) {
         this.scriptPath = scriptPath;
+    }
+
+    @ConfigurationProperty(
+            order = 2,
+            displayMessageKey = "Script Hash",
+            helpMessageKey = "Hash SHA-256 of the script"
+    )
+    public String getScriptHash() {
+        return scriptHash;
+    }
+
+    public void setScriptHash(String scriptHash) {
+        this.scriptHash = scriptHash;
     }
 
     @ConfigurationProperty(
@@ -35,6 +50,19 @@ public class ScriptConfiguration extends AbstractConfiguration {
         this.shellType = shellType;
     }
 
+    @ConfigurationProperty(
+            order = 3,
+            displayMessageKey = "Schema Path",
+            helpMessageKey = "Full path to the schema (e.g., /path/to/schema.ps1)"
+    )
+    public String getSchemaFilePath() {
+        return schemaFilePath;
+    }
+
+    public void setSchemaFilePath(String schemaFilePath) {
+        this.schemaFilePath = schemaFilePath;
+    }
+
     @Override
     public void validate() {
         // Check scriptPath
@@ -46,10 +74,19 @@ public class ScriptConfiguration extends AbstractConfiguration {
             throw new IllegalArgumentException("Script path '" + scriptPath + "' does not exist, is not a file, or is not readable.");
         }
 
+        // Validate schemaFilePath if provided
+        if (schemaFilePath == null || schemaFilePath.trim().isEmpty()) {
+            throw new IllegalArgumentException("Schema path must be provided and cannot be empty.");
+        }
+        File schemaFile = new File(schemaFilePath);
+        if (!schemaFile.exists() || !schemaFile.isFile() || !schemaFile.canRead()) {
+                throw new IllegalArgumentException("Schema file '" + schemaFilePath + "' does not exist, is not a file, or is not readable.");
+        }
+
         // Check shellType
         if (shellType == null || shellType.trim().isEmpty()) {
-            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell').");
+            throw new IllegalArgumentException("Shell type must be provided (e.g., '/bin/bash', 'cmd.exe', 'PowerShell', 'perl').");
         }
-        // Optional: Add more shell validation if needed
+
     }
 }
