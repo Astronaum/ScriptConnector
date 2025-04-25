@@ -7,9 +7,6 @@ import org.identityconnectors.framework.spi.Configuration;
 import org.identityconnectors.framework.spi.Connector;
 import org.identityconnectors.framework.spi.ConnectorClass;
 import org.identityconnectors.framework.spi.operations.*;
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -26,7 +23,7 @@ import java.util.Set;
 import static org.identityconnectors.framework.common.objects.AttributeBuilder.build;
 
 @ConnectorClass(configurationClass = ScriptConfiguration.class, displayNameKey = "script.connector.display")
-public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object> {
+public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object>{
 
     private static final Logger LOGGER = Logger.getLogger(ScriptConnector.class.getName());
     private ScriptConfiguration configuration;
@@ -40,7 +37,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     public void init(Configuration configuration) {
         this.configuration = (ScriptConfiguration) configuration;
         LOGGER.info("ScriptConnector initialized with script path: " + this.configuration.getScriptPath());
-        LOGGER.info("ScriptConnector initialized with schema path: " + this.configuration.getSchemaFilePath());
+        //LOGGER.info("ScriptConnector initialized with schema path: " + this.configuration.getSchemaFilePath());
         LOGGER.info("ScriptConnector initialized with Script Hash : " + this.configuration.getScriptHash());
 
         if (!verifyScriptHash()) {
@@ -102,22 +99,6 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
     }
 
-    /*@Override
-    public void delete(ObjectClass objectClass, Uid uid, OperationOptions operationOptions) {
-        if (!objectClass.is(ObjectClass.ACCOUNT_NAME)) {
-            throw new UnsupportedOperationException("Only ACCOUNT object class is supported");
-        }
-
-        try {
-            String[] command = {configuration.getShellType(), configuration.getScriptPath(), "delete", "uid=" + uid.getUidValue()};
-            LOGGER.info("Executing delete command: " + Arrays.toString(command));
-            String output = executeScript(command);
-            LOGGER.info("Delete operation output: " + output);
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException("Failed to execute delete script: " + e.getMessage(), e);
-        }
-    }*/
-
     @Override
     public Uid update(ObjectClass objectClass, Uid uid, Set<Attribute> attributes, OperationOptions operationOptions) {
         if (!objectClass.is(ObjectClass.ACCOUNT_NAME)) {
@@ -143,8 +124,12 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
 
         // Prepare command
-        String[] command = new String[]{
+        /*String[] command = new String[]{
                 "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getSchemaFilePath()
+        };*/
+
+        String[] command = new String[]{
+                "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getScriptPath(), "getSchema"
         };
 
         String output;
@@ -185,10 +170,10 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
 
             accountBuilder.addAttributeInfo(attrBuilder.build());
         }
-
         schemaBuilder.defineObjectClass(accountBuilder.build());
         return schemaBuilder.build();
     }
+
 
 
     @Override
@@ -351,82 +336,6 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         return command.toArray(new String[0]);
     }
 
-
-    /*private String[] buildCommand(String operation, Set<Attribute> attributes, String... extraArgs) {
-        List<String> command = new ArrayList<>();
-
-        // Check if the script is a PowerShell script (.ps1 extension)
-        if (configuration.getScriptPath().endsWith(".ps1")) {
-            command.add("powershell"); // or "pwsh" for PowerShell Core
-            command.add("-ExecutionPolicy");
-            command.add("Bypass"); // To allow script execution without restrictions
-            command.add("-File");
-        } else if (configuration.getScriptPath().endsWith(".pl")) {
-            // Perl script
-            command.add("perl");
-        } else if (configuration.getScriptPath().endsWith(".py")) {
-            command.add("python"); // ou "python" selon l'environnement
-            LOGGER.info("Final command to execute: " + String.join(" ", command));
-        } else {
-            command.add(configuration.getShellType()); // For bash, use bash
-        }
-
-        // Add the script path and operation to the command
-        command.add(configuration.getScriptPath());
-        command.add(operation);
-        boolean isPython = configuration.getScriptPath().endsWith(".py");
-
-        for (Attribute attr : attributes) {
-            if (attr.getValue() != null && !attr.getValue().isEmpty()) {
-                // Convert __NAME__ to name
-                String attributeName = attr.getName().equals("__NAME__") ? "name" : attr.getName();
-
-                // Use -- for Python, - otherwise
-                String prefix = isPython ? "--" : "-";
-
-                for (Object value : attr.getValue()) {
-                    command.add(prefix + attributeName);  // e.g., -name
-
-                    String stringValue = String.valueOf(value);
-
-                    // If the value contains a space, quote it
-                    if (stringValue.contains(" ")) {
-                        stringValue = "\"" + stringValue + "\"";
-                    }
-
-                    command.add(stringValue);
-                }
-            }
-        }
-
-        // Add extra arguments (if any)
-        if (extraArgs != null) {
-            command.addAll(Arrays.asList(extraArgs));
-        }
-
-        if (extraArgs != null) {
-            for (String arg : extraArgs) {
-                if (arg.contains("=")) {
-                    String[] parts = arg.split("=", 2);
-                    String key = parts[0];
-                    String value = parts[1];
-
-                    String prefix = isPython ? "--" : "-";
-                    command.add(prefix + key);
-                    command.add(value);
-                } else {
-                    // fallback: no key=value form, just raw arg
-                    command.add(arg);
-                }
-            }
-        }
-
-        LOGGER.info("Executing script command: " + String.join(" ", command));
-
-        // Return the command as an array of strings
-        return command.toArray(new String[0]);
-    }*/
-
     private String extractUidFromOutput(String output, Set<Attribute> attributes) {
         LOGGER.info("Script output received in extractUIDFromOutput: " + output);
 
@@ -475,5 +384,4 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             return false;
         }
     }
-
 }

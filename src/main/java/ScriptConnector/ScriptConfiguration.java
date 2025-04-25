@@ -9,7 +9,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     private String scriptPath;
     private String shellType;
     private String scriptHash;
-    private String schemaFilePath;
+    //private String schemaFilePath;
 
     @ConfigurationProperty(
             order = 1,
@@ -19,7 +19,6 @@ public class ScriptConfiguration extends AbstractConfiguration {
     public String getScriptPath() {
         return scriptPath;
     }
-
     public void setScriptPath(String scriptPath) {
         this.scriptPath = scriptPath;
     }
@@ -50,7 +49,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
         this.shellType = shellType;
     }
 
-    @ConfigurationProperty(
+    /*@ConfigurationProperty(
             order = 3,
             displayMessageKey = "Schema Path",
             helpMessageKey = "Full path to the schema (e.g., /path/to/schema.ps1)"
@@ -61,7 +60,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
 
     public void setSchemaFilePath(String schemaFilePath) {
         this.schemaFilePath = schemaFilePath;
-    }
+    }*/
 
     @Override
     public void validate() {
@@ -75,13 +74,13 @@ public class ScriptConfiguration extends AbstractConfiguration {
         }
 
         // Validate schemaFilePath if provided
-        if (schemaFilePath == null || schemaFilePath.trim().isEmpty()) {
+        /*if (schemaFilePath == null || schemaFilePath.trim().isEmpty()) {
             throw new IllegalArgumentException("Schema path must be provided and cannot be empty.");
         }
         File schemaFile = new File(schemaFilePath);
         if (!schemaFile.exists() || !schemaFile.isFile() || !schemaFile.canRead()) {
                 throw new IllegalArgumentException("Schema file '" + schemaFilePath + "' does not exist, is not a file, or is not readable.");
-        }
+        }*/
 
         // Check shellType
         if (shellType == null || shellType.trim().isEmpty()) {
