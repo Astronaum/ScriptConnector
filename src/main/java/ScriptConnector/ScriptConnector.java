@@ -269,7 +269,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         boolean isPowerShell = configuration.getScriptPath().endsWith(".ps1");
         boolean isPerl = configuration.getScriptPath().endsWith(".pl");
         boolean isPython = configuration.getScriptPath().endsWith(".py");
-        boolean isBash = configuration.getShellType().contains("bash");
+        boolean isBash = configuration.getShellType().endsWith(".sh");
 
         if (isPowerShell) {
             command.add("powershell");
