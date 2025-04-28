@@ -26,7 +26,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     @ConfigurationProperty(
             order = 2,
             displayMessageKey = "Script Hash",
-            helpMessageKey = "Hash SHA-256 of the script"
+            helpMessageKey = "Hash SHA-256 of the script Optional"
     )
     public String getScriptHash() {
         return scriptHash;
@@ -39,7 +39,7 @@ public class ScriptConfiguration extends AbstractConfiguration {
     @ConfigurationProperty(
             order = 2,
             displayMessageKey = "Shell Type",
-            helpMessageKey = "Shell to execute the script (e.g., '/bin/bash' for Bash, 'cmd.exe', 'PowerShell')"
+            helpMessageKey = "Shell to execute the script (e.g., 'powershell', 'python' or 'perl')"
     )
     public String getShellType() {
         return shellType != null ? shellType : "/bin/bash"; // Default to /bin/bash

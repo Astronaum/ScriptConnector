@@ -23,7 +23,7 @@ import java.util.Set;
 import static org.identityconnectors.framework.common.objects.AttributeBuilder.build;
 
 @ConnectorClass(configurationClass = ScriptConfiguration.class, displayNameKey = "script.connector.display")
-public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, SearchOp<Object>{
+public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp, SchemaOp, TestOp, SearchOp<Object>{
 
     private static final Logger LOGGER = Logger.getLogger(ScriptConnector.class.getName());
     private ScriptConfiguration configuration;
@@ -49,6 +49,29 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
     public void dispose() {
         this.configuration = null;
         LOGGER.info("ScriptConnector disposed");
+    }
+
+    @Override
+    public void test() {
+        // This method is called to test if the connector can interact with the service.
+        try {
+            // For example, you can run a simple command or script to check if the connector is operational.
+            String[] command = buildCommand("test", Collections.emptySet());
+            String output = executeScript(command);
+            LOGGER.info("Test operation output: " + output);
+
+            // You can add more sophisticated logic to test the connection, like checking if
+            // the output is valid or if the connection was successful.
+            if (output.contains("Test success")) {
+                LOGGER.info("Test operation succeeded.");
+            } else {
+                LOGGER.warning("Test operation failed: Unexpected output.");
+                throw new RuntimeException("Test operation failed: Unexpected output.");
+            }
+        } catch (IOException | InterruptedException e) {
+            LOGGER.severe("Test operation failed: " + e.getMessage());
+            throw new RuntimeException("Test operation failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -116,7 +139,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
     }
 
-    @Override
+    /*@Override
     public Schema schema() {
         LOGGER.info("Building schema from dynamic script...");
         SchemaBuilder schemaBuilder = new SchemaBuilder(getClass());
@@ -124,9 +147,9 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
 
         // Prepare command
-        /*String[] command = new String[]{
+        String[] command = new String[]{
                 "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getSchemaFilePath()
-        };*/
+        };
 
         String[] command = new String[]{
                 "powershell", "-ExecutionPolicy", "Bypass", "-File", configuration.getScriptPath(), "getSchema"
@@ -172,8 +195,78 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         }
         schemaBuilder.defineObjectClass(accountBuilder.build());
         return schemaBuilder.build();
+    }*/
+
+    @Override
+    public Schema schema() {
+        LOGGER.info("Building schema from dynamic script...");
+        SchemaBuilder schemaBuilder = new SchemaBuilder(getClass());
+        ObjectClassInfoBuilder accountBuilder = new ObjectClassInfoBuilder();
+        accountBuilder.setType(ObjectClass.ACCOUNT_NAME);
+
+        // Prepare command based on script language
+        String[] command = prepareScriptCommand(configuration.getScriptPath(), configuration.getShellType());
+
+        String output;
+        try {
+            output = executeScript(command);
+        } catch (Exception e) {
+            throw new RuntimeException("Error executing schema script: " + e.getMessage(), e);
+        }
+
+        // Process the output
+        String[] lines = output.split("\\R"); // Split by newlines (cross-platform)
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+
+            // Expecting format: name:type:requiredOrOptional
+            String[] parts = line.split(":");
+            if (parts.length < 3) {
+                LOGGER.warning("Invalid schema line: " + line);
+                continue;
+            }
+
+            String name = parts[0].trim();
+            String typeStr = parts[1].trim();
+            String requiredStr = parts[2].trim();
+
+            // Determine the type based on the schema
+            Class<?> type = String.class;
+            if ("Integer".equalsIgnoreCase(typeStr)) {
+                type = Integer.class;
+            } else if ("Boolean".equalsIgnoreCase(typeStr)) {
+                type = Boolean.class;
+            }
+
+            boolean required = "required".equalsIgnoreCase(requiredStr);
+
+            // Add attribute to the schema
+            AttributeInfoBuilder attrBuilder = AttributeInfoBuilder.define(name).setType(type);
+            if (required) {
+                attrBuilder.setRequired(true);
+            }
+
+            accountBuilder.addAttributeInfo(attrBuilder.build());
+        }
+
+        schemaBuilder.defineObjectClass(accountBuilder.build());
+        return schemaBuilder.build();
     }
 
+    private String[] prepareScriptCommand(String scriptPath, String language) {
+        switch (language.toLowerCase()) {
+            case "powershell":
+                return new String[] {"powershell", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "getSchema"};
+            case "perl":
+                return new String[] {"perl", scriptPath, "getSchema"};
+            case "python":
+                return new String[] {"python", scriptPath, "getSchema"};
+            case "bash":
+                return new String[] {"/bin/bash", scriptPath, "getschema"};
+            default:
+                throw new IllegalArgumentException("Unsupported script language: " + language);
+        }
+    }
 
 
     @Override
@@ -362,7 +455,7 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
         return null;
     }
 
-    private boolean verifyScriptHash() {
+    /*private boolean verifyScriptHash() {
         String scriptPath = configuration.getScriptPath();
         String expectedHash = configuration.getScriptHash(); // SHA-256 attendu
         try {
@@ -383,5 +476,46 @@ public class ScriptConnector implements Connector, CreateOp, DeleteOp, UpdateOp,
             LOGGER.severe("Error computing script hash: " + e.getMessage());
             return false;
         }
+    }*/
+
+    private boolean verifyScriptHash() {
+        String scriptPath = configuration.getScriptPath();
+        String expectedHash = configuration.getScriptHash(); // SHA-256 attendu
+
+        // Check if the hash is provided
+        if (expectedHash == null || expectedHash.isEmpty()) {
+            LOGGER.warning("No script hash provided. Executing script without verification.");
+            return true;  // Skip hash verification and allow execution
+        }
+
+        try {
+            // Read the script file
+            byte[] scriptBytes = Files.readAllBytes(Paths.get(scriptPath));
+
+            // Compute the script hash
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(scriptBytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            String actualHash = sb.toString();
+
+            // Log both hashes
+            LOGGER.info("Expected Script Hash: " + expectedHash);
+            LOGGER.info("Actual Script Hash:   " + actualHash);
+
+            // Verify the hashes
+            if (actualHash.equalsIgnoreCase(expectedHash)) {
+                return true;  // Hash matches, proceed with execution
+            } else {
+                LOGGER.warning("Hash mismatch! Expected hash does not match actual hash.");
+                return false;  // Hash mismatch, return false (or handle it as needed)
+            }
+        } catch (IOException | NoSuchAlgorithmException e) {
+            LOGGER.severe("Error computing script hash: " + e.getMessage());
+            return false;  // Return false if there's an error
+        }
     }
+
 }
